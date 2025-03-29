@@ -61,20 +61,13 @@ class VkLongPollService(
         log.info(LOG_START_POLLING, server)
 
         while (true) {
-            val pollUrl = buildPollUrl(server, key, ts)
+            val pollUrl = getPollUrl(server, key, ts)
 
             runCatching {
                 val pollResponse = restTemplate.getForObject(pollUrl, Map::class.java)
-                ts = (pollResponse?.get(TS_FIELD) as? String) ?: ts
-                val updates = (pollResponse?.get(UPDATES_FIELD) as? List<*>?)
-                    ?.filterIsInstance<Map<String, Any>>()
-                    ?: emptyList()
-
-                updates.forEach { update ->
-                    if (update[TYPE_FIELD] == MESSAGE_NEW_TYPE) {
-                        handleNewMessage(update)
-                    }
-                }
+                ts = tryToUpdateTs(ts, pollResponse)
+                val messages = getMessages(pollResponse)
+                handleAllMessages(messages)
             }.onFailure {
                 log.error(LOG_POLLING_ERROR, it.message)
                 Thread.sleep(RETRY_DELAY_MS)
@@ -82,29 +75,7 @@ class VkLongPollService(
         }
     }
 
-    private fun getLongPollServerData(): Triple<String, String, String> {
-        val url = UriComponentsBuilder.fromUriString(VK_API_URL)
-            .queryParam(ACCESS_TOKEN_PARAM, config.token)
-            .queryParam(GROUP_ID_PARAM, config.groupId)
-            .queryParam(VERSION_PARAM, config.apiVersion)
-            .build()
-            .toUriString()
-
-        val response = restTemplate.getForObject(url, Map::class.java)
-        val responseData = (response?.get(RESPONSE_FIELD) as? Map<*, *>)
-            ?: throw RuntimeException(ERROR_INVALID_RESPONSE)
-
-        val server = responseData[SERVER_FIELD]?.toString()?.let {
-            if (it.startsWith(HTTP_PREFIX)) it else "$HTTPS_PREFIX$it"
-        } ?: throw RuntimeException(ERROR_SERVER_MISSING)
-
-        val key = responseData[KEY_FIELD]?.toString() ?: throw RuntimeException(ERROR_KEY_MISSING)
-        val ts = responseData[TS_FIELD]?.toString() ?: throw RuntimeException(ERROR_TS_MISSING)
-
-        return Triple(server, key, ts)
-    }
-
-    private fun buildPollUrl(server: String, key: String, ts: String): String {
+    private fun getPollUrl(server: String, key: String, ts: String): String {
         return UriComponentsBuilder.fromUriString(server)
             .queryParam(POLL_ACT_PARAM, POLL_ACT_VALUE)
             .queryParam(POLL_KEY_PARAM, key)
@@ -114,6 +85,24 @@ class VkLongPollService(
             .toUriString()
     }
 
+    private fun tryToUpdateTs(oldTs: String, pollResponse: Map<*, *>?): String {
+        return (pollResponse?.get(TS_FIELD) as? String) ?: oldTs
+    }
+
+    private fun getMessages(pollResponse: Map<*, *>?): List<Map<String, Any>> {
+        return (pollResponse?.get(UPDATES_FIELD) as? List<*>?)
+            ?.filterIsInstance<Map<String, Any>>()
+            ?: emptyList()
+    }
+
+    private fun handleAllMessages(updates: List<Map<String, Any>>) {
+        updates.forEach { update ->
+            if (update[TYPE_FIELD] == MESSAGE_NEW_TYPE) {
+                handleNewMessage(update)
+            }
+        }
+    }
+
     private fun handleNewMessage(update: Map<String, Any>) {
         val message = (update[OBJECT_FIELD] as? Map<*, *>)?.get(MESSAGE_FIELD) as? Map<*, *> ?: return
         val userId = message[FROM_ID_FIELD]?.toString() ?: return
@@ -121,5 +110,38 @@ class VkLongPollService(
 
         log.info(LOG_RECEIVED_MESSAGE, userId, text)
         vkApiService.sendMessage(userId, MESSAGE_RESPONSE_TEMPLATE.format(text))
+    }
+
+    private fun getLongPollServerData(): Triple<String, String, String> {
+        val url = getLongPollServerUrl()
+
+        val response = restTemplate.getForObject(url, Map::class.java)
+        val responseData = tryToGetResponseData(response)
+        val server = tryToGetServer(responseData)
+
+        val key = responseData[KEY_FIELD]?.toString() ?: throw RuntimeException(ERROR_KEY_MISSING)
+        val ts = responseData[TS_FIELD]?.toString() ?: throw RuntimeException(ERROR_TS_MISSING)
+
+        return Triple(server, key, ts)
+    }
+
+    private fun tryToGetServer(responseData: Map<*, *>): String {
+        return responseData[SERVER_FIELD]?.toString()?.let {
+            if (it.startsWith(HTTP_PREFIX)) it else "$HTTPS_PREFIX$it"
+        } ?: throw RuntimeException(ERROR_SERVER_MISSING)
+    }
+
+    private fun tryToGetResponseData(response: Map<*, *>?): Map<*, *> {
+        return (response?.get(RESPONSE_FIELD) as? Map<*, *>)
+            ?: throw RuntimeException(ERROR_INVALID_RESPONSE)
+    }
+
+    private fun getLongPollServerUrl(): String {
+        return UriComponentsBuilder.fromUriString(VK_API_URL)
+            .queryParam(ACCESS_TOKEN_PARAM, config.token)
+            .queryParam(GROUP_ID_PARAM, config.groupId)
+            .queryParam(VERSION_PARAM, config.apiVersion)
+            .build()
+            .toUriString()
     }
 }
