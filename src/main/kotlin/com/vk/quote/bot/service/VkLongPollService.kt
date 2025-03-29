@@ -72,7 +72,5 @@ class VkLongPollService(
                 throw RuntimeException("Error in polling: ${e.message}")
             }
         }
-
     }
-
 }

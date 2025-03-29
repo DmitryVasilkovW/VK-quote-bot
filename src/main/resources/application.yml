@@ -1,0 +1,6 @@
+spring.application.name: VK-quote-bot
+
+vk:
+  token: ${VK_BOT_TOKEN}
+  group-id: ${GROUP_ID}
+  api-version: 5.131
