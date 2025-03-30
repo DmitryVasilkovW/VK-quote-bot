@@ -1,17 +1,28 @@
-FROM gradle:8.13-jdk21 AS build
-
-COPY . /Vk-quote-bot
-WORKDIR /Vk-quote-bot
-
-RUN chmod +x env.sh
-RUN ./env.sh
-
-RUN gradle clean build
-
-FROM amazoncorretto:21
+FROM eclipse-temurin:21-jdk-alpine AS builder
 
 WORKDIR /app
 
-COPY --from=build /Vk-quote-bot/build/libs/*.jar /app/Vk-quote-bot.jar
+COPY gradlew .
+COPY gradle gradle
+COPY build.gradle.kts .
+COPY settings.gradle.kts .
+COPY env.sh .
+COPY src src
 
-CMD ["java", "-jar", "/app/Vk-quote-bot.jar"]
+RUN chmod +x ./env.sh
+RUN chmod +x ./gradlew
+
+RUN ./env.sh
+RUN ./gradlew clean bootJar
+
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+COPY --from=builder /app/build/libs/*.jar app.jar
+
+COPY env.sh /app/env.sh
+
+RUN source /app/env.sh
+
+ENTRYPOINT ["sh", "-c", "source /app/env.sh && java -jar app.jar"]
