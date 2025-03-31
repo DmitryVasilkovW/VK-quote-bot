@@ -1,6 +1,7 @@
 package com.vk.quote.bot.service
 
 import com.vk.quote.bot.config.VkBotConfig
+import com.vk.quote.bot.model.VkApiEndpoint
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.RequestEntity
@@ -11,21 +12,6 @@ import org.springframework.web.util.UriComponentsBuilder
 
 @Service
 class VkApiService(private val config: VkBotConfig) {
-    companion object {
-        private const val USER_ID_PARAM = "user_id"
-        private const val MESSAGE_PARAM = "message"
-        private const val RANDOM_ID_PARAM = "random_id"
-
-        private const val ACCESS_TOKEN_PARAM = "access_token"
-        private const val VERSION_PARAM = "v"
-
-        private const val API_URL = "https://api.vk.com/method"
-        private const val MESSAGES_SEND_ENDPOINT = "/messages.send"
-        private const val CONTENT_TYPE_HEADER = "Content-Type"
-        private const val CONTENT_TYPE_VALUE = "application/x-www-form-urlencoded; charset=UTF-8"
-        private const val LOG_RESPONSE = "Response: {}"
-        private const val LOG_ERROR = "Error occurred: {}"
-    }
 
     private val log = LoggerFactory.getLogger(VkApiService::class.java)
 
@@ -45,7 +31,9 @@ class VkApiService(private val config: VkBotConfig) {
     }
 
     private fun getUrl(): String {
-        return UriComponentsBuilder.fromUriString("$API_URL$MESSAGES_SEND_ENDPOINT")
+        return UriComponentsBuilder.fromUriString(
+            "${VkApiEndpoint.BASE_URL.url}$MESSAGES_SEND_ENDPOINT"
+        )
             .queryParam(ACCESS_TOKEN_PARAM, config.token)
             .queryParam(VERSION_PARAM, config.apiVersion)
             .build()
@@ -73,5 +61,20 @@ class VkApiService(private val config: VkBotConfig) {
         }.onFailure { e ->
             log.error(LOG_ERROR, e.message)
         }
+    }
+
+    companion object {
+        private const val USER_ID_PARAM = "user_id"
+        private const val MESSAGE_PARAM = "message"
+        private const val RANDOM_ID_PARAM = "random_id"
+
+        private const val ACCESS_TOKEN_PARAM = "access_token"
+        private const val VERSION_PARAM = "v"
+
+        private const val MESSAGES_SEND_ENDPOINT = "/messages.send"
+        private const val CONTENT_TYPE_HEADER = "Content-Type"
+        private const val CONTENT_TYPE_VALUE = "application/x-www-form-urlencoded; charset=UTF-8"
+        private const val LOG_RESPONSE = "Response: {}"
+        private const val LOG_ERROR = "Error occurred: {}"
     }
 }

@@ -1,6 +1,9 @@
 package com.vk.quote.bot.service
 
 import com.vk.quote.bot.config.VkBotConfig
+import com.vk.quote.bot.exception.VkApiException
+import com.vk.quote.bot.exception.model.VkApiErrorType
+import com.vk.quote.bot.model.VkApiEndpoint
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -12,45 +15,6 @@ class VkLongPollService(
     private val vkApiService: VkApiService,
     private val config: VkBotConfig
 ) {
-    companion object {
-        private const val LOG_START_POLLING = "Starting Long Polling at: {}"
-        private const val LOG_POLLING_ERROR = "Polling error: {}"
-        private const val LOG_RECEIVED_MESSAGE = "Received message from {}: {}"
-
-        private const val VK_API_URL = "https://api.vk.com/method/groups.getLongPollServer"
-        private const val ACCESS_TOKEN_PARAM = "access_token"
-        private const val GROUP_ID_PARAM = "group_id"
-        private const val VERSION_PARAM = "v"
-
-        private const val POLL_ACT_PARAM = "act"
-        private const val POLL_ACT_VALUE = "a_check"
-        private const val POLL_KEY_PARAM = "key"
-        private const val POLL_TS_PARAM = "ts"
-        private const val POLL_WAIT_PARAM = "wait"
-        private const val POLL_WAIT_VALUE = 25
-
-        private const val RESPONSE_FIELD = "response"
-        private const val SERVER_FIELD = "server"
-        private const val KEY_FIELD = "key"
-        private const val TS_FIELD = "ts"
-        private const val UPDATES_FIELD = "updates"
-        private const val TYPE_FIELD = "type"
-        private const val MESSAGE_NEW_TYPE = "message_new"
-        private const val OBJECT_FIELD = "object"
-        private const val MESSAGE_FIELD = "message"
-        private const val FROM_ID_FIELD = "from_id"
-        private const val TEXT_FIELD = "text"
-
-        private const val ERROR_INVALID_RESPONSE = "Invalid VK API response"
-        private const val ERROR_SERVER_MISSING = "Server field missing"
-        private const val ERROR_KEY_MISSING = "Key field missing"
-        private const val ERROR_TS_MISSING = "TS field missing"
-
-        private const val MESSAGE_RESPONSE_TEMPLATE = "Вы сказали: %s"
-        private const val HTTPS_PREFIX = "https://"
-        private const val HTTP_PREFIX = "http"
-        private const val RETRY_DELAY_MS = 5000L
-    }
 
     private val log: Logger = LoggerFactory.getLogger(VkLongPollService::class.java)
     private val restTemplate: RestTemplate = RestTemplate()
@@ -119,8 +83,8 @@ class VkLongPollService(
         val responseData = tryToGetResponseData(response)
         val server = tryToGetServer(responseData)
 
-        val key = responseData[KEY_FIELD]?.toString() ?: throw RuntimeException(ERROR_KEY_MISSING)
-        val ts = responseData[TS_FIELD]?.toString() ?: throw RuntimeException(ERROR_TS_MISSING)
+        val key = responseData[KEY_FIELD]?.toString() ?: throw VkApiException(VkApiErrorType.KeyMissing)
+        val ts = responseData[TS_FIELD]?.toString() ?: throw VkApiException(VkApiErrorType.TSMissing)
 
         return Triple(server, key, ts)
     }
@@ -128,20 +92,54 @@ class VkLongPollService(
     private fun tryToGetServer(responseData: Map<*, *>): String {
         return responseData[SERVER_FIELD]?.toString()?.let {
             if (it.startsWith(HTTP_PREFIX)) it else "$HTTPS_PREFIX$it"
-        } ?: throw RuntimeException(ERROR_SERVER_MISSING)
+        } ?: throw VkApiException(VkApiErrorType.ServerMissing)
     }
 
     private fun tryToGetResponseData(response: Map<*, *>?): Map<*, *> {
         return (response?.get(RESPONSE_FIELD) as? Map<*, *>)
-            ?: throw RuntimeException(ERROR_INVALID_RESPONSE)
+            ?: throw VkApiException(VkApiErrorType.InvalidResponse)
     }
 
     private fun getLongPollServerUrl(): String {
-        return UriComponentsBuilder.fromUriString(VK_API_URL)
+        return UriComponentsBuilder.fromUriString(VkApiEndpoint.GET_LONG_POLL_SERVER.url)
             .queryParam(ACCESS_TOKEN_PARAM, config.token)
             .queryParam(GROUP_ID_PARAM, config.groupId)
             .queryParam(VERSION_PARAM, config.apiVersion)
             .build()
             .toUriString()
+    }
+
+    companion object {
+        private const val LOG_START_POLLING = "Starting Long Polling at: {}"
+        private const val LOG_POLLING_ERROR = "Polling error: {}"
+        private const val LOG_RECEIVED_MESSAGE = "Received message from {}: {}"
+
+        private const val ACCESS_TOKEN_PARAM = "access_token"
+        private const val GROUP_ID_PARAM = "group_id"
+        private const val VERSION_PARAM = "v"
+
+        private const val POLL_ACT_PARAM = "act"
+        private const val POLL_ACT_VALUE = "a_check"
+        private const val POLL_KEY_PARAM = "key"
+        private const val POLL_TS_PARAM = "ts"
+        private const val POLL_WAIT_PARAM = "wait"
+        private const val POLL_WAIT_VALUE = 25
+
+        private const val RESPONSE_FIELD = "response"
+        private const val SERVER_FIELD = "server"
+        private const val KEY_FIELD = "key"
+        private const val TS_FIELD = "ts"
+        private const val UPDATES_FIELD = "updates"
+        private const val TYPE_FIELD = "type"
+        private const val MESSAGE_NEW_TYPE = "message_new"
+        private const val OBJECT_FIELD = "object"
+        private const val MESSAGE_FIELD = "message"
+        private const val FROM_ID_FIELD = "from_id"
+        private const val TEXT_FIELD = "text"
+
+        private const val MESSAGE_RESPONSE_TEMPLATE = "Вы сказали: %s"
+        private const val HTTPS_PREFIX = "https://"
+        private const val HTTP_PREFIX = "http"
+        private const val RETRY_DELAY_MS = 5000L
     }
 }
